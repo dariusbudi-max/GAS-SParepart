@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WMS Sparepart - Pro Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        [v-cloak] { display: none; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-900">
+    <div id="app" v-cloak class="min-h-screen flex flex-col">
+        
+        <div v-if="loading" class="fixed inset-0 bg-white/80 backdrop-blur-sm z-[100] flex items-center justify-center">
+            <div class="flex flex-col items-center">
+                <div class="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        </div>
+
+        <div v-if="!isLoggedIn" class="flex-1 flex items-center justify-center p-6">
+            <div class="bg-white w-full max-w-md p-8 rounded-[2.5rem] shadow-2xl border border-white">
+                <div class="text-center mb-8">
+                    <div class="w-20 h-20 bg-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                        <i class="fa-solid fa-warehouse text-white text-3xl"></i>
+                    </div>
+                    <h1 class="text-2xl font-black text-slate-800">WMS PRO</h1>
+                    <p class="text-slate-400 text-sm">Inventory Management System</p>
+                </div>
+                <div class="space-y-4">
+                    <input v-model="loginData.username" type="text" placeholder="Username" class="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl outline-none focus:ring-2 focus:ring-indigo-600">
+                    <input v-model="loginData.password" type="password" placeholder="Password" class="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl outline-none focus:ring-2 focus:ring-indigo-600">
+                    <button @click="handleLogin" class="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-xl active:scale-95 transition-all">LOGIN</button>
+                </div>
+            </div>
+        </div>
+
+        <div v-else class="flex-1 flex flex-col pb-24">
+            <header class="bg-white px-6 py-6 flex justify-between items-center shadow-sm">
+                <div>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Petugas</p>
+                    <h2 class="text-lg font-black text-slate-800">{{ userData.nama }}</h2>
+                </div>
+                <button @click="handleLogout" class="w-10 h-10 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center"><i class="fa-solid fa-power-off"></i></button>
+            </header>
+
+            <main v-if="activeTab === 'home'" class="p-6 space-y-6">
+                <div class="bg-indigo-600 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
+                    <h3 class="text-2xl font-black mb-2">Scan Barcode</h3>
+                    <p class="text-indigo-100 text-sm mb-6">Input barang keluar secara otomatis.</p>
+                    <button @click="openScanner" class="bg-white text-indigo-600 font-black px-8 py-3 rounded-xl shadow-lg flex items-center gap-2 active:scale-95 transition-all">
+                        <i class="fa-solid fa-expand"></i> BUKA SCANNER
+                    </button>
+                    <i class="fa-solid fa-barcode absolute -bottom-6 -right-6 text-white/10 text-[10rem]"></i>
+                </div>
+
+                <div class="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-200">
+                    <h3 class="font-black text-slate-800 mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left text-indigo-500"></i> Riwayat Hari Ini
+                    </h3>
+                    <div class="space-y-4">
+                        <div v-for="tx in recentTx" :key="tx.tgl" class="flex items-center gap-4 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                            <div :class="tx.jenis === 'MASUK' ? 'text-emerald-500 bg-emerald-50' : 'text-rose-500 bg-rose-50'" class="w-10 h-10 rounded-xl flex items-center justify-center font-bold">
+                                <i :class="tx.jenis === 'MASUK' ? 'fa-solid fa-arrow-down' : 'fa-solid fa-arrow-up'"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-bold text-slate-800 truncate">{{ tx.nama }}</p>
+                                <p class="text-[10px] text-slate-400 font-bold">{{ tx.tgl }}</p>
+                            </div>
+                            <div class="font-black text-slate-800">{{ tx.qty }}</div>
+                        </div>
+                        <p v-if="recentTx.length === 0" class="text-center py-4 text-slate-400 text-xs italic font-medium">Belum ada aktivitas</p>
+                    </div>
+                </div>
+            </main>
+
+            <main v-if="activeTab === 'inventory'" class="p-6 flex-1 flex flex-col">
+                <div class="mb-6">
+                    <h3 class="text-2xl font-black text-slate-800 mb-4">Cek Stok</h3>
+                    <div class="relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                        <input v-model="searchQuery" type="text" placeholder="Cari nama atau kode barang..." class="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-600 transition-all shadow-sm">
+                    </div>
+                </div>
+
+                <div class="space-y-3 overflow-y-auto custom-scroll flex-1 pr-1">
+                    <div v-for="item in filteredItems" :key="item.kode" class="bg-white p-4 rounded-2xl border border-slate-200 flex items-center gap-4 shadow-sm">
+                        <div class="w-14 h-14 bg-slate-100 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
+                            <img v-if="item.foto" :src="item.foto" class="w-full h-full object-cover">
+                            <i v-else class="fa-solid fa-image text-slate-300"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-xs font-bold text-indigo-600 mb-0.5 leading-none">{{ item.kode }}</p>
+                            <h4 class="font-bold text-slate-800 truncate uppercase text-sm">{{ item.nama }}</h4>
+                            <p class="text-[10px] text-slate-400 font-bold">Lokasi: {{ item.lokasi }}</p>
+                        </div>
+                        <div class="text-right">
+                            <div :class="item.stok <= item.stokMin ? 'text-rose-500 bg-rose-50 border-rose-100' : 'text-emerald-500 bg-emerald-50 border-emerald-100'" class="px-3 py-1 border rounded-lg">
+                                <p class="text-xs font-bold leading-none uppercase mb-1">Stok</p>
+                                <p class="text-lg font-black leading-none">{{ item.stok }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <nav class="fixed bottom-6 left-6 right-6 bg-slate-900/90 backdrop-blur-md rounded-[2rem] p-3 flex justify-around items-center z-40 shadow-2xl">
+                <button @click="activeTab = 'home'" :class="activeTab === 'home' ? 'text-white' : 'text-slate-500'" class="flex flex-col items-center gap-1 transition-all">
+                    <i class="fa-solid fa-house-chimney text-xl"></i>
+                    <span class="text-[10px] font-bold">HOME</span>
+                </button>
+                <div class="w-[1px] h-8 bg-slate-800"></div>
+                <button @click="activeTab = 'inventory'" :class="activeTab === 'inventory' ? 'text-white' : 'text-slate-500'" class="flex flex-col items-center gap-1 transition-all">
+                    <i class="fa-solid fa-boxes-stacked text-xl"></i>
+                    <span class="text-[10px] font-bold">STOK</span>
+                </button>
+            </nav>
+        </div>
+
+        <div v-if="scannerActive" class="fixed inset-0 bg-black z-[100] flex flex-col">
+            <div class="p-6 flex justify-between items-center">
+                <p class="text-white text-xs font-black tracking-widest uppercase">Scanning Barcode</p>
+                <button @click="closeScanner" class="w-10 h-10 bg-white/20 text-white rounded-full flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="flex-1 flex items-center justify-center p-6"><div id="reader" class="w-full aspect-square bg-slate-800 rounded-[2.5rem] overflow-hidden border-2 border-indigo-500 shadow-2xl shadow-indigo-500/20"></div></div>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbxCPnDzvwKunQJZhNQHpxJ17PU1fgev68Khh9IPYMjtp4xt4W4zjRVaBXj5ED2d8Fj1bg/exec"; // <--- GANTI INI
+
+        createApp({
+            setup() {
+                const isLoggedIn = ref(false);
+                const loading = ref(false);
+                const activeTab = ref('home');
+                const scannerActive = ref(false);
+                const searchQuery = ref('');
+                const loginData = ref({ username: '', password: '' });
+                const userData = ref({ nama: '', role: '' });
+                const inventory = ref([]);
+                const recentTx = ref([]);
+                let html5QrCode = null;
+
+                const callAPI = async (action, payload = {}) => {
+                    loading.value = true;
+                    try {
+                        const response = await fetch(GAS_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'text/plain' },
+                            body: JSON.stringify({ action, token: localStorage.getItem('token'), payload })
+                        });
+                        const res = await response.json();
+                        if (res.valid === false) handleLogout();
+                        return res;
+                    } catch (e) { alert("Error: " + e.message); }
+                    finally { loading.value = false; }
+                };
+
+                const fetchAllData = async () => {
+                    const dashboard = await callAPI('GET_DASHBOARD', { filterType: 'ALL' });
+                    if (dashboard.recentTx) recentTx.value = dashboard.recentTx.slice(0, 5);
+                    
+                    const items = await callAPI('GET_INITIAL_DATA');
+                    if (items.items) inventory.value = items.items;
+                };
+
+                const filteredItems = computed(() => {
+                    if (!searchQuery.value) return inventory.value;
+                    const q = searchQuery.value.toLowerCase();
+                    return inventory.value.filter(i => i.nama.toLowerCase().includes(q) || i.kode.toLowerCase().includes(q));
+                });
+
+                const handleLogin = async () => {
+                    const res = await callAPI('LOGIN', loginData.value);
+                    if (res.status === 'success') {
+                        localStorage.setItem('token', res.token);
+                        userData.value = { nama: res.nama, role: res.role };
+                        isLoggedIn.value = true;
+                        fetchAllData();
+                    } else { alert(res.message); }
+                };
+
+                const openScanner = () => {
+                    scannerActive.value = true;
+                    setTimeout(() => {
+                        html5QrCode = new Html5Qrcode("reader");
+                        html5QrCode.start({ facingMode: "environment" }, { fps: 15, qrbox: 250 }, onScanSuccess);
+                    }, 300);
+                };
+
+                const onScanSuccess = async (decodedText) => {
+                    html5QrCode.pause();
+                    const res = await callAPI('PROSES_TRANSAKSI', {
+                        items: [{ kode: decodedText, qty: 1 }],
+                        jenis: 'KELUAR', dept: 'STAFF', ket: 'Scan Mobile'
+                    });
+                    if (res.status === 'success') {
+                        alert("Berhasil keluar: " + decodedText);
+                        fetchAllData();
+                        closeScanner();
+                    } else {
+                        alert(res.message);
+                        html5QrCode.resume();
+                    }
+                };
+
+                const closeScanner = async () => {
+                    if (html5QrCode) { await html5QrCode.stop(); html5QrCode.clear(); }
+                    scannerActive.value = false;
+                };
+
+                const handleLogout = () => {
+                    localStorage.clear();
+                    isLoggedIn.value = false;
+                    location.reload();
+                };
+
+                onMounted(async () => {
+                    const token = localStorage.getItem('token');
+                    if (token) {
+                        const res = await callAPI('VALIDATE_SESSION');
+                        if (res.valid) {
+                            userData.value = { nama: res.nama, role: res.role };
+                            isLoggedIn.value = true;
+                            fetchAllData();
+                        } else { handleLogout(); }
+                    }
+                });
+
+                return { isLoggedIn, loginData, handleLogin, loading, userData, handleLogout, activeTab, scannerActive, openScanner, closeScanner, recentTx, inventory, searchQuery, filteredItems };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
